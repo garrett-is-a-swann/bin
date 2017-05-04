@@ -1,0 +1,12 @@
+#!/bin/bash
+for ((counter=5; counter > 0; counter--)) do
+    echo $counter
+    sleep 1
+done 
+counter=$3
+for ((counter; counter > 0; counter--)) do
+    echo $counter
+    # xdotool getmouselocation
+    xdotool mousemove $1 $2 click 1 &
+    sleep $4
+done
