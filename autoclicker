@@ -8,5 +8,14 @@ for ((counter; counter > 0; counter--)) do
     echo $counter
     # xdotool getmouselocation
     xdotool mousemove $1 $2 click 1 &
-    sleep $4
+    echo "click" 
+    if (( $(echo $4'<'1 | bc -l) )); then
+        exit 1
+    else 
+        echo "sleep for $4 seconds" 
+        sleep $4
+        randNum=$(($RANDOM % 10))
+        echo "sleep for $randNum seconds" 
+        sleep $randNum
+    fi
 done
