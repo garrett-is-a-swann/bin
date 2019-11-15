@@ -1,0 +1,8 @@
+#!/bin/bash
+
+echo "F I T  I N T E N S I F Y I N G"
+printf REE
+while true; do
+    printf E
+    sleep .005
+done
