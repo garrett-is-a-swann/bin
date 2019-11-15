@@ -7,7 +7,6 @@ _completions() {
     cur="${COMP_WORDS[COMP_CWORD]}"
     _get_comp_words_by_ref -n : cur
 
-    #echo $cur
     if [ -z "$LAST_SFDX_COMMANDS" ]; then
         LAST_SFDX_COMMANDS="$(sfdx commands)"
     fi
