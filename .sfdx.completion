@@ -1,0 +1,22 @@
+#!/bin/bash
+
+LAST_SFDX_COMMANDS=''
+
+_completions() {
+    local suggestions cur;
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    _get_comp_words_by_ref -n : cur
+
+    #echo $cur
+    if [ -z "$LAST_SFDX_COMMANDS" ]; then
+        LAST_SFDX_COMMANDS="$(sfdx commands)"
+    fi
+    local SFDX=$(echo "$LAST_SFDX_COMMANDS" | grep --color=never "$cur")
+    local WORDS="$(echo "$SFDX" | sed -r "s/^($cur[^:]*(:|$)).*/\1/" | python3 -c 'import sys;[print(i[:-1]) for i in sorted(list(set(sys.stdin)))]')"
+    suggestions=($(compgen -W "$WORDS" "${COMP_WORDS[1]}" -- $cur ))
+
+    COMPREPLY=("${suggestions[@]}")
+    __ltrim_colon_completions "$cur"
+}
+
+complete -o nospace -F _completions sfdx
