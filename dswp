@@ -1,0 +1,14 @@
+#!/bin/bash
+path="${1:-.}"
+find $path -name '.*.swp' -delete
+
+# yes='-y'
+# shift
+# if ! [[ "$*" =~ (^|[[:space:]])"$yes"($|[[:space:]]) ]]; then
+    # read -p "Are you sure you would like to delete all vim swp files on path $path? (y/N) " answer
+    # if ! [[ "$answer" =~ ([y|Y][e|E]?[s|S]?) ]]; then
+        # exit
+    # fi
+# fi
+
+# echo "deleting"

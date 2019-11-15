@@ -1,0 +1,2 @@
+#!/bin/bash
+screen -dRR $1

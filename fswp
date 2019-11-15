@@ -1,0 +1,6 @@
+#!/bin/bash
+if [ "$1" == "-type" ]; then 
+    find . -name '.*.sw*' | sed -r 's/(.*\/)\.([^/]*)\.(sw.)/\1\2 (\3)/'
+else 
+    find "${1:-.}" -name '.*.sw*' | sed -r 's/(.*\/)\.([^/]*)\.sw./\1\2/'
+fi
