@@ -1,0 +1,198 @@
+#!/usr/bin/python3
+from argparse import ArgumentParser
+
+import subprocess
+import os
+import re
+
+sfml_path='build/SFML-2.5.1'
+sfml_libs=f'-L{sfml_path}/lib -lsfml-graphics -lsfml-window -lsfml-system -lm -Wl,-rpath={sfml_path}/lib'
+sfml_head=f'-I{sfml_path}/include'
+
+gtest_path='googletest-release-1.10.0'
+gtest_libs=f'-L{gtest_path}/lib -lgtest_main -lgtest -lpthread -Wl,-rpath={gtest_path}/lib'
+gtest_head=f'-I{gtest_path}/googletest/include'
+
+cxx = 'g++'
+cpp_version = 17
+flags = f'-g -std=c++{cpp_version} -Wall -W -fPIC'
+
+BLACK       = '\x1b[0;30;40m'
+RED         = '\x1b[0;31;40m'
+GREEN       = '\x1b[0;32;40m'
+SUCCESS     = '\x1b[1;37;42m'
+YELLOW      = '\x1b[0;33;40m'
+BLUE        = '\x1b[0;34;40m'
+INFORMATION = '\x1b[1;37;44m'
+PURPLE      = '\x1b[0;35;40m'
+CYAN        = '\x1b[0;36;40m'
+WHITE       = '\x1b[0;37;40m'
+
+BOLD        = '\x1b[1m'
+ITALIC      = '\x1b[3m'
+UNDERLINE   = '\x1b[4m'
+RESET       = '\x1b[0m'
+
+
+def run(command, shell=True, appearance=''):
+    print(f'{PURPLE}{appearance}{command}{RESET}')
+    subprocess.run(command, shell=shell)
+
+def getDeps(file_name):
+    dependancies = []
+    external_deps = set()
+    contents = None
+    if not os.path.exists(file_name):
+        return dependancies, external_deps
+
+    with open(file_name, 'r') as cpp_file:
+        contents = cpp_file.read()
+
+    for line in contents.split('\n'):
+        include = re.match('^#include\W*"(.*?)".*', line)
+        if include:
+            dependancies.append(include.group(1))
+            continue
+
+        if re.match('^#include\W*<.*SFML.*', line):
+            external_deps.add('sfml')
+
+        if re.match('^#include\W*<gtest.*', line):
+            external_deps.add('gtest')
+
+    return dependancies, external_deps
+
+
+def cpp2Obj(pwd, file_name, visited, o_dir = ''):# -> tuple[bool, list[str]]:
+    command = '{cxx} {flags} {heads} -I{pwd} -c'
+    cpp_name, header_name, o_name = (
+        re.sub('\..*', '.cpp', file_name),
+        re.sub('\..*', '.h', file_name),
+        o_dir + os.path.basename(re.sub('\..*', '.o', file_name)))
+
+    o_mtime = os.path.getmtime(o_name) if os.path.exists(o_name) else 0
+    h_mtime = os.path.getmtime(header_name) if os.path.exists(header_name) else 0
+    c_mtime = os.path.getmtime(cpp_name)  if os.path.exists(cpp_name) else 0
+    if c_mtime:
+        visited[cpp_name] = c_mtime
+    if h_mtime:
+        visited[header_name] = h_mtime
+    c_deps = getDeps(cpp_name) 
+    h_deps = getDeps(header_name)
+    dependancies = list(set(c_deps[0] + h_deps[0]))
+
+    heads = []
+    if 'gtest' in c_deps[1] | h_deps[1]:
+        heads.append(f'{gtest_head}')
+    if 'sfml' in c_deps[1] | h_deps[1]:
+        heads.append(f'{sfml_head}')
+
+    command = command.format(
+        cxx=cxx,
+        flags=flags,
+        heads=' '.join(heads),
+        pwd=pwd
+    )
+
+    print(f'{GREEN}{BOLD}{o_name}{RESET}{BLUE}: {dependancies}')
+    recompiled = False
+    recompiled_deps = []
+    dep_libs = None
+    for dep in dependancies:
+        if dep in visited:
+            continue
+        dependancy_recompiled, dep_libs = cpp2Obj(pwd, dep, visited, o_dir)
+        if dependancy_recompiled:
+            recompiled_deps.append(dep)
+
+    if os.path.exists(cpp_name):
+        if not os.path.exists(o_name):
+            print(f'\t{YELLOW}{BOLD}{UNDERLINE}{o_name}{RESET}{YELLOW} recompile: {RED}{BOLD}DNE{RESET}')
+            run(f'{command} {cpp_name} -o {o_name}', appearance=f'', shell=True)
+            o_mtime = os.path.getmtime(o_name)
+            recompiled = True
+        if o_mtime < max(h_mtime, c_mtime):
+            print(f'\t{YELLOW}{BOLD}{UNDERLINE}{o_name}{RESET}{YELLOW} recompile: {RED}{BOLD}O < H|C', o_mtime < max(h_mtime, c_mtime), RESET)
+            run(f'{command} {cpp_name} -o {o_name}', appearance=f'', shell=True)
+            o_mtime = os.path.getmtime(o_name)
+            recompiled = True
+
+        for dep in recompiled_deps:
+            if o_mtime < visited[dep]:
+                print(f'\t{YELLOW}{BOLD}{UNDERLINE}{o_name}{RESET}{YELLOW} recompile: {RED}{BOLD}DEP RECOMPILE', recompiled_deps, RESET)
+                run(f'{command} {cpp_name} -o {o_name}', appearance=f'', shell=True)
+                o_mtime = os.path.getmtime(o_name)
+                recompiled = True
+
+    if o_mtime:
+        visited[o_name] = o_mtime
+
+    return recompiled, c_deps[1] | h_deps[1] | (dep_libs if dep_libs else set())
+
+
+def compile(names, files):
+    src_dir = os.getcwd()
+    if 'src' in os.listdir():
+        src_dir += '/src'
+    pwd = re.sub(' ', '\ ', os.getcwd())
+
+    o_dir = '.obj/'
+    if o_dir:
+        os.makedirs(o_dir, exist_ok=True)
+
+    for i, entry in enumerate(files):
+        path = {}
+        prog = names[i] if names and i < len(names) else f"{os.path.splitext(entry)[0] + '.out' }"
+        link, dep_libs = cpp2Obj(pwd, entry, path, o_dir)
+        libs = []
+        if 'gtest' in dep_libs:
+            libs.append(gtest_libs)
+        if 'sfml' in dep_libs:
+            libs.append(sfml_libs)
+        libs = ' '.join(libs)
+
+        if not os.path.exists(prog):
+            print(f'\t{GREEN}{BOLD}{UNDERLINE}{prog}{RESET}{GREEN} LINK: {RED}{BOLD}DNE{RESET}')
+            link = True
+        elif os.path.getmtime(prog) < path[o_dir + os.path.splitext(entry)[0] + '.o']:
+            print(f'\t{GREEN}{BOLD}{UNDERLINE}{prog}{RESET}{GREEN} LINK: {RED}{BOLD}OUT < O', os.path.getmtime(prog) < path[o_dir + os.path.splitext(entry)[0] + '.o'], RESET)
+            link = True
+
+        if link:
+            objs = ' '.join(filter(lambda visted: visted[-2:] == '.o', path.keys()))
+            print(f'\t{INFORMATION}Linking...{RESET}')
+            run(f'{cxx} {flags} -o {prog} {objs} {libs} -lstdc++', appearance=f'{BOLD}', shell=True)
+            print(f'\t{SUCCESS}Done.{RESET}')
+        else:
+            print(f'\t{SUCCESS}Nothing to do.{RESET}')
+
+
+if __name__ == '__main__':
+    parser = ArgumentParser()
+    parser.add_argument('entries', nargs='+');
+    parser.add_argument('--prog', nargs='*');
+    parser.add_argument('--define', '-D', nargs='*');
+    args = parser.parse_args();
+    def print_format_table():
+        """
+        prints table of formatted text format options
+        """
+        for style in range(8):
+            for fg in range(30,38):
+                s1 = ''
+                for bg in range(40,48):
+                    format = ';'.join([str(style), str(fg), str(bg)])
+                    s1 += '\x1b[%sm %s \x1b[0m' % (format, format)
+                print(s1)
+            print('\n')
+
+    # print_format_table()
+
+    if args.define:
+        flags += ' '+' '.join(map(lambda d: f'-D{d}', args.define))
+
+    if args.entries and len(args.entries) == 1 and not args.prog:
+        args.prog = ['a.out']
+    compile(args.prog, args.entries)
+
+
