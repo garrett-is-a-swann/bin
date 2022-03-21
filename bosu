@@ -38,7 +38,7 @@ def run(command, shell=True, appearance=''):
     print(f'{PURPLE}{appearance}{command}{RESET}')
     subprocess.run(command, shell=shell)
 
-def getDeps(file_name):
+def getDeps(file_name, src_dir):
     dependancies = []
     external_deps = set()
     contents = None
@@ -51,7 +51,7 @@ def getDeps(file_name):
     for line in contents.split('\n'):
         include = re.match('^#include\W*"(.*?)".*', line)
         if include:
-            dependancies.append(include.group(1))
+            dependancies.append(src_dir + include.group(1))
             continue
 
         if re.match('^#include\W*<.*SFML.*', line):
@@ -63,8 +63,9 @@ def getDeps(file_name):
     return dependancies, external_deps
 
 
-def cpp2Obj(pwd, file_name, visited, o_dir = ''):# -> tuple[bool, list[str]]:
+def cpp2Obj(pwd, file_name, visited, o_dir = '', src_dir = ''}:
     command = '{cxx} {flags} {heads} -I{pwd} -c'
+
     cpp_name, header_name, o_name = (
         re.sub('\..*', '.cpp', file_name),
         re.sub('\..*', '.h', file_name),
@@ -77,8 +78,8 @@ def cpp2Obj(pwd, file_name, visited, o_dir = ''):# -> tuple[bool, list[str]]:
         visited[cpp_name] = c_mtime
     if h_mtime:
         visited[header_name] = h_mtime
-    c_deps = getDeps(cpp_name) 
-    h_deps = getDeps(header_name)
+    c_deps = getDeps(cpp_name, src_dir)
+    h_deps = getDeps(header_name, src_dir)
     dependancies = list(set(c_deps[0] + h_deps[0]))
 
     heads = []
@@ -94,14 +95,17 @@ def cpp2Obj(pwd, file_name, visited, o_dir = ''):# -> tuple[bool, list[str]]:
         pwd=pwd
     )
 
-    print(f'{GREEN}{BOLD}{o_name}{RESET}{BLUE}: {dependancies}')
+    if c_mtime:
+        print(f'{GREEN}{BOLD}{o_name}{RESET}{BLUE}: {dependancies}')
+    else:
+        print(f'{GREEN}{UNDERLINE}{header_name}{RESET}{BLUE}: {dependancies}')
     recompiled = False
     recompiled_deps = []
     dep_libs = None
     for dep in dependancies:
         if dep in visited:
             continue
-        dependancy_recompiled, dep_libs = cpp2Obj(pwd, dep, visited, o_dir)
+        dependancy_recompiled, dep_libs = cpp2Obj(pwd, dep, visited, o_dir, src_dir)
         if dependancy_recompiled:
             recompiled_deps.append(dep)
 
@@ -131,10 +135,11 @@ def cpp2Obj(pwd, file_name, visited, o_dir = ''):# -> tuple[bool, list[str]]:
 
 
 def compile(names, files):
-    src_dir = os.getcwd()
-    if 'src' in os.listdir():
-        src_dir += '/src'
     pwd = re.sub(' ', '\ ', os.getcwd())
+    if 'src' in os.listdir():
+        src_dir = 'src/'
+        pwd += f'/{src_dir}'
+
 
     o_dir = '.obj/'
     if o_dir:
@@ -142,8 +147,9 @@ def compile(names, files):
 
     for i, entry in enumerate(files):
         path = {}
-        prog = names[i] if names and i < len(names) else f"{os.path.splitext(entry)[0] + '.out' }"
-        link, dep_libs = cpp2Obj(pwd, entry, path, o_dir)
+        entry_base = os.path.splitext(os.path.basename(entry))[0]
+        prog = names[i] if names and i < len(names) else f"{entry_base + '.out' }"
+        link, dep_libs = cpp2Obj(pwd, entry, path, o_dir, src_dir)
         libs = []
         if 'gtest' in dep_libs:
             libs.append(gtest_libs)
@@ -154,8 +160,8 @@ def compile(names, files):
         if not os.path.exists(prog):
             print(f'\t{GREEN}{BOLD}{UNDERLINE}{prog}{RESET}{GREEN} LINK: {RED}{BOLD}DNE{RESET}')
             link = True
-        elif os.path.getmtime(prog) < path[o_dir + os.path.splitext(entry)[0] + '.o']:
-            print(f'\t{GREEN}{BOLD}{UNDERLINE}{prog}{RESET}{GREEN} LINK: {RED}{BOLD}OUT < O', os.path.getmtime(prog) < path[o_dir + os.path.splitext(entry)[0] + '.o'], RESET)
+        elif os.path.getmtime(prog) < path[o_dir + entry_base + '.o']:
+            print(f'\t{GREEN}{BOLD}{UNDERLINE}{prog}{RESET}{GREEN} LINK: {RED}{BOLD}OUT < O', os.path.getmtime(prog) < path[o_dir + entry_base + '.o'], RESET)
             link = True
 
         if link:
@@ -185,8 +191,6 @@ if __name__ == '__main__':
                     s1 += '\x1b[%sm %s \x1b[0m' % (format, format)
                 print(s1)
             print('\n')
-
-    # print_format_table()
 
     if args.define:
         flags += ' '+' '.join(map(lambda d: f'-D{d}', args.define))
