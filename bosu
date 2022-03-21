@@ -36,7 +36,7 @@ RESET       = '\x1b[0m'
 
 def run(command, shell=True, appearance=''):
     print(f'{PURPLE}{appearance}{command}{RESET}')
-    subprocess.run(command, shell=shell)
+    subprocess.run(command, shell=shell, check=True)
 
 def getDeps(file_name, src_dir):
     dependancies = []
@@ -149,7 +149,12 @@ def compile(names, files):
         path = {}
         entry_base = os.path.splitext(os.path.basename(entry))[0]
         prog = names[i] if names and i < len(names) else f"{entry_base + '.out' }"
-        link, dep_libs = cpp2Obj(pwd, entry, path, o_dir, src_dir)
+        try:
+            link, dep_libs = cpp2Obj(pwd, entry, path, o_dir, src_dir)
+        except subprocess.CalledProcessError as e:
+            print(RED, BOLD, e, sep='')
+            return
+
         libs = []
         if 'gtest' in dep_libs:
             libs.append(gtest_libs)
