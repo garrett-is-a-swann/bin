@@ -63,7 +63,7 @@ def getDeps(file_name, src_dir):
     return dependancies, external_deps
 
 
-def cpp2Obj(pwd, file_name, visited, o_dir = '', src_dir = ''}:
+def cpp2Obj(pwd, file_name, visited, o_dir = '', src_dir = ''):
     command = '{cxx} {flags} {heads} -I{pwd} -c'
 
     cpp_name, header_name, o_name = (
