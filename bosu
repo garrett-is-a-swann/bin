@@ -145,10 +145,13 @@ def compile(names, files):
     if o_dir:
         os.makedirs(o_dir, exist_ok=True)
 
+    all_files = set()
+    progs = []
     for i, entry in enumerate(files):
         path = {}
         entry_base = os.path.splitext(os.path.basename(entry))[0]
         prog = names[i] if names and i < len(names) else f"{entry_base + '.out' }"
+        progs.append(prog)
         try:
             link, dep_libs = cpp2Obj(pwd, entry, path, o_dir, src_dir)
         except subprocess.CalledProcessError as e:
@@ -176,6 +179,8 @@ def compile(names, files):
             print(f'\t{SUCCESS}Done.{RESET}')
         else:
             print(f'\t{SUCCESS}Nothing to do.{RESET}')
+        all_files |= set(path.keys())
+    return all_files, o_dir, progs
 
 
 if __name__ == '__main__':
@@ -183,7 +188,12 @@ if __name__ == '__main__':
     parser.add_argument('entries', nargs='+');
     parser.add_argument('--prog', nargs='*');
     parser.add_argument('--define', '-D', nargs='*');
-    args = parser.parse_args();
+    parser.add_argument('--coverage', '-CC', action='store_true');
+    parser.add_argument('--cache', '-Ch', action='store_true');
+    parser.add_argument('--call', '-Cl', action='store_true');
+    parser.add_argument('--leaks', '-L', action='store_true');
+    parser.add_argument('--view', '-v', action='store_true');
+    args = parser.parse_args()
     def print_format_table():
         """
         prints table of formatted text format options
@@ -202,6 +212,37 @@ if __name__ == '__main__':
 
     if args.entries and len(args.entries) == 1 and not args.prog:
         args.prog = ['a.out']
-    compile(args.prog, args.entries)
+    if args.coverage:
+        flags += ' -O0 --coverage -fno-exceptions -fno-inline -fprofile-arcs -ftest-coverage'
 
+    all_files, o_dir, out_files = compile(args.prog, args.entries)
+    if args.coverage:
+        run(f'gcov -b "{" ".join(filter(lambda file: file.endswith(".cpp"), all_files))}" -o ./{o_dir}')
+        try:
+            for out in out_files:
+                run(out)
+        except Exception as e:
+            pass
+        run(f'lcov --directory ./{o_dir} --capture --output-file ./code_coverage.info -rc lcov_branch_coverage=1')
+        run(f'lcov --remove ./code_coverage.info  "/usr*" -o ./code_coverage.info -rc lcov_branch_coverage=1')
+        run(f'lcov --remove ./code_coverage.info  "7*" -o ./code_coverage.info -rc lcov_branch_coverage=1')
+        run(f'lcov --remove ./code_coverage.info  "*googletest*" -o ./code_coverage.info -rc lcov_branch_coverage=1')
+        run('genhtml ./code_coverage.info --branch-coverage --output-directory ./code_coverage_report/')
 
+    if args.cache:
+        out = out_files[0]
+        run(f'valgrind --tool=cachegrind {out}')
+        if args.view:
+            cache_out = sorted([ f for f in os.listdir() if re.match('cachegrind.out.+', f) ], key=os.path.getmtime, reverse=True)[0]
+            run(f'kcachegrind {cache_out}')
+
+    if args.call:
+        out = out_files[0]
+        run(f'valgrind --tool=callgrind {out}')
+        if args.view:
+            call_out = sorted([ f for f in os.listdir() if re.match('callgrind.out.+', f) ], key=os.path.getmtime, reverse=True)[0]
+            run(f'kcachegrind {call_out}')
+
+    if args.leaks:
+        for out in out_files:
+            run(f'valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes --verbose --error-exitcode=1 {out}')
