@@ -1,0 +1,36 @@
+#!/bin/bash
+
+DIR="$1"
+if [ -z "$DIR" ]; then
+    git_base=$(git rev-parse --show-toplevel)
+    if [ -e "$git_base" ]; then
+        DIR="$git_base"
+    fi
+fi
+
+if [ -z "$DIR" ]; then
+    DIR=$(pwd)
+
+    # Locate the "project root" directory to begin locating files from.
+    # Returns the LAST project by locating dirs listed in search_dirs as a locator heuristic.
+    # Ex: 
+    # - /path/to/PROJECT_DIR/src/some/other/files
+    #            ^^^^^^^^^^^
+    # - /path/to/PROJECT_DIR/include/some/DEPENDENCY/src/some/other/file
+    #                                     ^^^^^^^^^^
+    
+    search_dirs=("include" "src" "test")
+    last_dir=""
+    for search_dir in "${search_dirs[@]}"; do
+        found="${DIR%$search_dir*}"
+        if [ "${#found}" -lt "${#DIR}" -a "${#found}" -gt "${#last_dir}" ]; then
+            last_dir="$found"
+        fi
+    done
+
+    if [ "${#last_dir}" -gt 0 ]; then
+        DIR="$last_dir"
+    fi
+fi
+
+find "$DIR/" -type f -exec realpath --relative-to=$(pwd) {} \;

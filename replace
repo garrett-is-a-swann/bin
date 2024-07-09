@@ -1,0 +1,24 @@
+#!/bin/bash
+# If $2 is not specified, program prints replacement spots, and quits.
+# if replacement occurs, program will attempt to print replacement locations after replacement.
+#   Note: if replacement includes endlines, linecount will differ and program will fail to print outcome correctly.
+
+TEXT_TO_REPLACE=$1
+REPLACEMENT_TEXT=$2
+MODIFIER=$3             # sed modifier. Ex: "g"
+
+grep --color=always -rn "$TEXT_TO_REPLACE"
+if [ -z "$REPLACEMENT_TEXT" ]; then
+    exit
+fi
+
+replacements=($(grep -rnHo "$TEXT_TO_REPLACE"))
+
+grep -rli "$TEXT_TO_REPLACE" | xargs -i@ sed -i "s$TEXT_TO_REPLACE$REPLACEMENT_TEXT$MODIFIER" @
+
+for replacement in "${replacements[@]}"; do
+    replacement_data=($(echo $replacement | tr ':' '\n'))
+    printf "${replacement_data[0]}":"${replacement_data[1]}":
+    sed -n "${replacement_data[1]},+4p" "${replacement_data[0]}" \
+        | grep --color=always $REPLACEMENT_TEXT
+done
