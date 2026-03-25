@@ -1,0 +1,3 @@
+#!/bin/bash
+PERCENT="$1"
+powershell.exe -ExecutionPolicy Bypass -File ~/bin/cursed-update-progress.ps1 $PERCENT

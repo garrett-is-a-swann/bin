@@ -1,0 +1,75 @@
+#!/bin/bash
+
+SLEEP_TIME="$((${1:-180}))"
+
+PIPE="/tmp/discord-pipe"
+
+setup-pipe() {
+    mkfifo "$PIPE"
+    exec 3<>$PIPE
+}
+
+send_progress() {
+    if [ -n "$WSL_DISTRO_NAME" ]; then
+        cursed-update-progress $1 2>/dev/null >&2 &
+    fi
+
+    if [ -n "$TMUX" ]; then
+        printf "\ePtmux;\e\e]9;4;1;%d\a\e\\" "$1"
+    else
+        printf "\e]9;4;1;%d\a" "$1"
+    fi
+}
+
+clear_progress() {
+    if [ -n "$WSL_DISTRO_NAME" ]; then
+        cursed-update-progress 0 2>/dev/null >&2 &
+    fi
+
+    if [ -n "$TMUX" ]; then
+        printf "\ePtmux;\e\e]9;4;0;0\a\e\\"
+    else
+        printf "\e]9;4;0;0\a"
+    fi
+}
+
+cleanup() {
+    # Cleanup discord
+    taskkill.exe /F /IM discord.exe >/dev/null
+
+    # Cleanup discord-pipe
+    rm /tmp/discord-pipe
+
+    # Remove taskbar progress bar
+    clear_progress
+    exit 1
+}
+
+setup-pipe
+trap cleanup INT TERM
+
+DISCORD_PATH="$(ls ~/win/Garre/AppData/Local/Discord/app-* -td | head -n 1)"
+"$DISCORD_PATH/Discord.exe" >/dev/null 2>&1 &
+
+LAST_PERCENT=-1
+for ((i = SLEEP_TIME; i > 0; i--)); do
+    filled=$(((SLEEP_TIME - i) * 20 / SLEEP_TIME))
+    percent=$(((SLEEP_TIME - i) * 100 / SLEEP_TIME))
+    bar=$(printf '%0.s#' $(seq 1 $filled))$(printf '%0.s-' $(seq 1 $((20 - filled))))
+    printf "\r%-${COLUMNS}s" "$(printf '[%s] %02d:%02d' "$bar" $((i / 60)) $((i % 60)))"
+
+    if ((percent != LAST_PERCENT)); then
+        send_progress $percent
+        LAST_PERCENT=$percent
+    fi
+
+    sleep 1
+    if read -t 0 <&3 2>/dev/null; then
+        read -r add <&3
+        i=$((i + add))
+        # Lengthen the progress bar by add amount.
+        SLEEP_TIME=$((SLEEP_TIME + add))
+    fi
+done
+echo
+cleanup

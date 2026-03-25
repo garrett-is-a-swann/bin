@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+SLEEP_TIME="$((${1:-60}))"
+[ -p /tmp/discord-pipe ] && echo $SLEEP_TIME > /tmp/discord-pipe
